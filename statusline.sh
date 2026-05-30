@@ -46,10 +46,9 @@ def usage_total(u):
 p = (d.get("workspace", {}) or {}).get("current_dir") or d.get("cwd") or os.getcwd()
 dirname = os.path.basename(p.rstrip("/")) or p
 
-# --- git branch + state + uncommitted line diff ---
+# --- git branch + state ---
 branch = None
 gitstate = ""
-gadded = gremoved = 0   # uncommitted lines vs HEAD (tracks real working-tree changes)
 def git(*a):
     return subprocess.run(["git", "-C", p, *a], capture_output=True, text=True, timeout=1)
 try:
@@ -63,13 +62,6 @@ try:
             ahead, behind = rl.stdout.split()
             if int(ahead):  gitstate += f"↑{ahead}"
             if int(behind): gitstate += f"↓{behind}"
-        # staged + unstaged line changes vs HEAD across tracked files
-        ns = git("diff", "HEAD", "--numstat")
-        if ns.returncode == 0:
-            for ln in ns.stdout.splitlines():
-                parts = ln.split("\t")
-                if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-                    gadded += int(parts[0]); gremoved += int(parts[1])
 except Exception:
     pass
 
@@ -122,11 +114,32 @@ try:
 except Exception:
     pass
 
-# --- cost / lines ---
+# --- current-session edit activity: distinct files + edit operations ---
+# Counts Edit/Write/NotebookEdit/MultiEdit tool calls in the current transcript.
+files_edited = edit_ops = 0
+try:
+    if tp and os.path.exists(tp):
+        seen = set()
+        for line in open(tp):
+            line = line.strip()
+            if not line: continue
+            try: o = json.loads(line)
+            except Exception: continue
+            c = (o.get("message", {}) or {}).get("content")
+            if isinstance(c, list):
+                for blk in c:
+                    if (isinstance(blk, dict) and blk.get("type") == "tool_use"
+                            and blk.get("name") in ("Edit", "Write", "NotebookEdit", "MultiEdit")):
+                        edit_ops += 1
+                        fp = (blk.get("input") or {}).get("file_path")
+                        if fp: seen.add(fp)
+        files_edited = len(seen)
+except Exception:
+    pass
+
+# --- cost ---
 cost = d.get("cost", {}) or {}
 usd = cost.get("total_cost_usd")
-added = cost.get("total_lines_added", 0)
-removed = cost.get("total_lines_removed", 0)
 
 # --- time-bucketed cost from the cache the helper maintains ---
 buckets = None
@@ -192,21 +205,20 @@ def add(plain, color):
     seg.append((plain, f"{color}{plain}{RST}"))
 
 add(dirname, DIM)                       # folder — dim/default
-# branch · git-state (✱ ↑ ↓) · diff (+/-) all grouped in one segment.
-# Prefer the real git working-tree diff; fall back to session edits if not a repo.
-if branch:
-    added, removed = gadded, gremoved
-diff_plain = f"+{added} -{removed}" if (added or removed) else ""
-diff_colored = f"{GREEN}+{added}{RST} {RED}-{removed}{RST}" if diff_plain else ""
+# branch · git-state (✱ ↑ ↓) · current-session edits (files / ops), one segment.
+ed_plain = ed_colored = ""
+if files_edited:
+    ed_plain = f"{files_edited}f {edit_ops}e"
+    ed_colored = f"{GREEN}{files_edited}f{RST} {DIM}{edit_ops}e{RST}"
 if branch:
     pp, cc = [branch], [f"{DIM}{branch}{RST}"]
     if gitstate:
         pp.append(gitstate); cc.append(f"{YELLOW}{gitstate}{RST}")
-    if diff_plain:
-        pp.append(diff_plain); cc.append(diff_colored)
+    if ed_plain:
+        pp.append(ed_plain); cc.append(ed_colored)
     seg.append((" ".join(pp), " ".join(cc)))
-elif diff_plain:
-    seg.append((diff_plain, diff_colored))
+elif ed_plain:
+    seg.append((ed_plain, ed_colored))
 add(model, DIM)                         # model — dim/default
 
 # rate-limit windows right after the model: pct colored by load, reset dim

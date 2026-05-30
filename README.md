@@ -6,7 +6,7 @@ that shows your repo, model + reasoning effort, live context-window usage
 (today / yesterday / this week / last week / month / all time).
 
 ```
-myproject | main ✱ +42 -7 | Opus 4.8 1M high | 5h 5% ↻4h30m · 7d 16% ↻3d18h | ctx 157k (16%) + sub 1× 17k = 174k | session $8.65 | today $12 · yest $9 · week $48 · lwk $63 · mon $210 · all $980 | 2026-01-01 14:19:05
+myproject | main ✱ 12f 74e | Opus 4.8 1M high | 5h 5% ↻4h30m · 7d 16% ↻3d18h | ctx 157k (16%) + sub 1× 17k = 174k | session $8.65 | today $12 · yest $9 · week $48 · lwk $63 · mon $210 · all $980 | 2026-01-01 14:19:05
 ```
 
 *(numbers above are illustrative)*
@@ -16,7 +16,7 @@ myproject | main ✱ +42 -7 | Opus 4.8 1M high | 5h 5% ↻4h30m · 7d 16% ↻3d1
 | Segment | Meaning |
 | --- | --- |
 | `myproject` | Current directory (basename) |
-| `main ✱ +42 -7` | Git branch · `✱` uncommitted · `↑/↓` ahead/behind upstream · lines added/removed this session |
+| `main ✱ 12f 74e` | Git branch · `✱` uncommitted · `↑/↓` ahead/behind upstream · **this session**: files edited (`12f`) + edit operations (`74e`) |
 | `Opus 4.8 1M high` | Model · context size · reasoning effort level |
 | `5h 5% ↻4h30m · 7d 16% ↻3d18h` | Rate-limit windows: % used + time to reset. Color shifts green → yellow → red as you approach the cap |
 | `ctx 157k (16%) + sub 1× 17k = 174k` | Main context-window fill (+%) **+** subagent windows **=** total. Subagents are separate windows, so they're shown as an addend, not folded into the main % |
