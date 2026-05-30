@@ -46,9 +46,10 @@ def usage_total(u):
 p = (d.get("workspace", {}) or {}).get("current_dir") or d.get("cwd") or os.getcwd()
 dirname = os.path.basename(p.rstrip("/")) or p
 
-# --- git branch + state ---
+# --- git branch + state + uncommitted line diff ---
 branch = None
 gitstate = ""
+gadded = gremoved = 0   # uncommitted lines vs HEAD (tracks real working-tree changes)
 def git(*a):
     return subprocess.run(["git", "-C", p, *a], capture_output=True, text=True, timeout=1)
 try:
@@ -62,6 +63,13 @@ try:
             ahead, behind = rl.stdout.split()
             if int(ahead):  gitstate += f"↑{ahead}"
             if int(behind): gitstate += f"↓{behind}"
+        # staged + unstaged line changes vs HEAD across tracked files
+        ns = git("diff", "HEAD", "--numstat")
+        if ns.returncode == 0:
+            for ln in ns.stdout.splitlines():
+                parts = ln.split("\t")
+                if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                    gadded += int(parts[0]); gremoved += int(parts[1])
 except Exception:
     pass
 
@@ -114,7 +122,7 @@ try:
 except Exception:
     pass
 
-# --- cost / lines (this session) ---
+# --- cost / lines ---
 cost = d.get("cost", {}) or {}
 usd = cost.get("total_cost_usd")
 added = cost.get("total_lines_added", 0)
@@ -154,8 +162,8 @@ def dur(secs):
         return None
     h, m = divmod(secs // 60, 60)
     dd, h = divmod(h, 24)
-    if dd: return f"{dd}d{h}h"
-    if h:  return f"{h}h{m:02d}m"
+    if dd: return f"{dd}d {h}h"
+    if h:  return f"{h}h {m:02d}m"
     return f"{m}m"
 
 rl_parts = []   # list of (label, pct, time_left)
@@ -169,7 +177,7 @@ try:
             continue
         reset = w.get("resets_at")
         left = dur(int(reset - now_ts)) if reset else None
-        rl_parts.append((label, pct, left))
+        rl_parts.append((label, round(pct), left))
 except Exception:
     pass
 
@@ -178,13 +186,16 @@ SEP, DIM, CYAN, MAG, YELLOW, GREEN, RED, ORANGE, WHITE, RST = (
     "\\033[97m", "\\033[2m", "\\033[96m", "\\033[95m", "\\033[93m",
     "\\033[92m", "\\033[91m", "\\033[38;5;208m", "\\033[37m", "\\033[0m")
 
-# each segment is (plain_text, colored_text)
+# each segment is (plain_text, colored_text) so we can measure width and color independently
 seg = []
 def add(plain, color):
     seg.append((plain, f"{color}{plain}{RST}"))
 
 add(dirname, DIM)                       # folder — dim/default
-# branch · git-state (✱ ↑ ↓) · diff (+/-) all grouped in one segment
+# branch · git-state (✱ ↑ ↓) · diff (+/-) all grouped in one segment.
+# Prefer the real git working-tree diff; fall back to session edits if not a repo.
+if branch:
+    added, removed = gadded, gremoved
 diff_plain = f"+{added} -{removed}" if (added or removed) else ""
 diff_colored = f"{GREEN}+{added}{RST} {RED}-{removed}{RST}" if diff_plain else ""
 if branch:
@@ -199,14 +210,14 @@ elif diff_plain:
 add(model, DIM)                         # model — dim/default
 
 # rate-limit windows right after the model: pct colored by load, reset dim
-def load_color(pp):
-    return GREEN if pp < 50 else (YELLOW if pp < 80 else RED)
+def load_color(p):
+    return GREEN if p < 50 else (YELLOW if p < 80 else RED)
 if rl_parts:
     pp, cc = [], []
     for label, pct, left in rl_parts:
-        pp.append(f"{label} {pct}%" + (f" ↻{left}" if left else ""))
+        pp.append(f"{label} {pct}%" + (f" ↻ {left}" if left else ""))
         cc.append(f"{DIM}{label}{RST} {load_color(pct)}{pct}%{RST}"
-                  + (f" {DIM}↻{left}{RST}" if left else ""))
+                  + (f" {DIM}↻ {left}{RST}" if left else ""))
     seg.append((" · ".join(pp), f" {DIM}·{RST} ".join(cc)))
 if win:
     pct = round(win / limit * 100)
