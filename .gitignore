@@ -1,0 +1,7 @@
+# Generated at runtime in ~/.claude — never commit (contains usage history / session data)
+cost-cache.json
+.cost-cache.lock
+.statusline-last-input.json
+settings.json
+settings.json.bak
+*.tmp
