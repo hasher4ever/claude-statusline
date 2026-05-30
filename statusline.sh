@@ -137,9 +137,11 @@ try:
 except Exception:
     pass
 
-# --- cost ---
+# --- cost + session line diff ---
 cost = d.get("cost", {}) or {}
 usd = cost.get("total_cost_usd")
+added = cost.get("total_lines_added", 0)      # lines Claude added this session
+removed = cost.get("total_lines_removed", 0)
 
 # --- time-bucketed cost from the cache the helper maintains ---
 buckets = None
@@ -205,20 +207,22 @@ def add(plain, color):
     seg.append((plain, f"{color}{plain}{RST}"))
 
 add(dirname, DIM)                       # folder — dim/default
-# branch · git-state (✱ ↑ ↓) · current-session edits (files / ops), one segment.
-ed_plain = ed_colored = ""
+# branch · git-state (✱ ↑ ↓) · session edits (files/ops) · session line diff (+/-)
+ep, ec = [], []
 if files_edited:
-    ed_plain = f"{files_edited}f {edit_ops}e"
-    ed_colored = f"{GREEN}{files_edited}f{RST} {DIM}{edit_ops}e{RST}"
+    ep.append(f"{files_edited}f {edit_ops}e")
+    ec.append(f"{GREEN}{files_edited}f{RST} {DIM}{edit_ops}e{RST}")
+if added or removed:
+    ep.append(f"+{added} -{removed}")
+    ec.append(f"{GREEN}+{added}{RST} {RED}-{removed}{RST}")
 if branch:
     pp, cc = [branch], [f"{DIM}{branch}{RST}"]
     if gitstate:
         pp.append(gitstate); cc.append(f"{YELLOW}{gitstate}{RST}")
-    if ed_plain:
-        pp.append(ed_plain); cc.append(ed_colored)
+    pp += ep; cc += ec
     seg.append((" ".join(pp), " ".join(cc)))
-elif ed_plain:
-    seg.append((ed_plain, ed_colored))
+elif ep:
+    seg.append((" ".join(ep), " ".join(ec)))
 add(model, DIM)                         # model — dim/default
 
 # rate-limit windows right after the model: pct colored by load, reset dim
